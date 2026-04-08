@@ -12,7 +12,7 @@ import time
 import warnings
 
 import numpy as np
-from six.moves import cPickle
+import pickle
 
 from snntoolbox.utils.utils import confirm_overwrite, is_module_installed
 from snntoolbox.simulation.utils import AbstractSNN, get_shape_from_label
@@ -400,7 +400,7 @@ class SNN(AbstractSNN):
         s['labels'] = labels  # List of population labels describing the net.
         s['variables'] = variables  # List of variable names.
         s['size'] = len(self.layers)  # Number of populations in assembly.
-        cPickle.dump(s, open(filepath, 'wb'), -1)
+        pickle.dump(s, open(filepath, 'wb'), -1)
 
     def save_connections(self, path):
         """Write parameters of a neural network to disk.
@@ -490,9 +490,9 @@ class SNN(AbstractSNN):
         assert os.path.isfile(filepath), \
             "Spiking neuron layers were not found at specified location."
         if sys.version_info < (3,):
-            s = cPickle.load(open(filepath, 'rb'))
+            s = pickle.load(open(filepath, 'rb'))
         else:
-            s = cPickle.load(open(filepath, 'rb'), encoding='bytes')
+            s = pickle.load(open(filepath, 'rb'), encoding='bytes')
 
         # Iterate over populations in assembly
         layers = []

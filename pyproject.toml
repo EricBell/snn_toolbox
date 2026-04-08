@@ -1,0 +1,99 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "snntoolbox"
+version = "0.7.0"
+description = "Spiking neural network conversion toolbox"
+readme = "README.rst"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    { name = "Bodo Rueckauer", email = "bodo.rueckauer@gmail.com" },
+]
+keywords = ["neural networks", "deep learning", "spiking"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "numpy>=1.23",
+    "h5py",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+tensorflow = [
+    "tensorflow>=2.10",
+]
+pytorch = [
+    "torch",
+    "onnx",
+    "onnxruntime",
+]
+brian2 = [
+    "brian2",
+]
+pynn = [
+    "PyNN",
+]
+# loihi: nxsdk and nxsdk_modules_ncl are Intel-proprietary and not on PyPI.
+# Install them manually per Intel's instructions, then use the loihi backend.
+loihi = []
+aedat = [
+    "more-itertools",
+]
+plotting = [
+    "scikit-learn",
+    "Pillow",
+]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "myst-parser",
+]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+all = [
+    "snntoolbox[tensorflow,pytorch,brian2,pynn,plotting,aedat]",
+]
+
+[project.scripts]
+snntoolbox = "snntoolbox.bin.run:main"
+
+[project.urls]
+Homepage = "https://github.com/NeuromorphicProcessorProject/snn_toolbox"
+Repository = "https://github.com/NeuromorphicProcessorProject/snn_toolbox.git"
+
+[project.entry-points."snntoolbox.parsers"]
+keras = "snntoolbox.parsing.model_libs.keras_input_lib"
+pytorch = "snntoolbox.parsing.model_libs.pytorch_input_lib"
+caffe = "snntoolbox.parsing.model_libs.caffe_input_lib"
+lasagne = "snntoolbox.parsing.model_libs.lasagne_input_lib"
+
+[project.entry-points."snntoolbox.backends"]
+INI_temporal_mean_rate = "snntoolbox.simulation.target_simulators.INI_temporal_mean_rate_target_sim"
+INI_ttfs = "snntoolbox.simulation.target_simulators.INI_ttfs_target_sim"
+INI_ttfs_corrective = "snntoolbox.simulation.target_simulators.INI_ttfs_corrective_target_sim"
+INI_ttfs_dyn_thresh = "snntoolbox.simulation.target_simulators.INI_ttfs_dyn_thresh_target_sim"
+INI_temporal_pattern = "snntoolbox.simulation.target_simulators.INI_temporal_pattern_target_sim"
+brian2 = "snntoolbox.simulation.target_simulators.brian2_target_sim"
+MegaSim = "snntoolbox.simulation.target_simulators.MegaSim_target_sim"
+loihi = "snntoolbox.simulation.target_simulators.loihi_target_sim"
+
+[tool.hatch.build.targets.wheel]
+packages = ["snntoolbox"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"snntoolbox/config_defaults" = "snntoolbox/config_defaults"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
