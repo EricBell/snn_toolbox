@@ -871,9 +871,9 @@ class AbstractSNN:
                                          layer.name))
 
         self.top1err_b_t = np.empty((self.batch_size, self._num_timesteps),
-                                    np.bool)
+                                    bool)
         self.top5err_b_t = np.empty((self.batch_size, self._num_timesteps),
-                                    np.bool)
+                                    bool)
 
     def reset_log_vars(self):
         """Reset variables to record during simulation."""

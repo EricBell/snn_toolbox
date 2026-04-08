@@ -65,7 +65,7 @@ class SNN(AbstractSNN):
         celltype = self.sim.SpikeSourcePoisson() if self._poisson_input \
             else self.sim.SpikeSourceArray()
         self.layers.append(self.sim.Population(
-            np.prod(input_shape[1:], dtype=np.int).item(), celltype,
+            np.prod(input_shape[1:], dtype=int).item(), celltype,
             label='InputLayer'))
 
     def add_layer(self, layer):
@@ -91,7 +91,7 @@ class SNN(AbstractSNN):
             return
 
         self.layers.append(self.sim.Population(
-            np.prod(layer.output_shape[1:], dtype=np.int).item(),
+            np.prod(layer.output_shape[1:], dtype=int).item(),
             self.sim.IF_curr_exp, self.cellparams, label=layer.name))
 
         self.layers[-1].initialize(v=self.layers[-1].get('v_rest'))

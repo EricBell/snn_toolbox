@@ -600,20 +600,12 @@ def apply_modifications(model, custom_objects=None):
 
 
 def import_configparser():
-    try:
-        import configparser
-    except ImportError:
-        # noinspection PyPep8Naming
-        import ConfigParser as configparser
-
+    import configparser
     return configparser
 
 
 def is_module_installed(mod):
-    if sys.version_info[0] < 3:
-        return pkgutil.find_loader(mod) is not None
-    else:
-        return importlib.util.find_spec(mod) is not None
+    return importlib.util.find_spec(mod) is not None
 
 
 def get_pearson_coefficients(spikerates_batch, activations_batch, max_rate):
