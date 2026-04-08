@@ -10,11 +10,15 @@ import pytest
 from snntoolbox.bin.utils import update_setup
 from snntoolbox.utils.utils import import_configparser
 
-with open(os.path.abspath(os.path.join(os.path.dirname(__file__),
-                                       '..', '..', 'requirements.txt'))) as f:
+try:
+    from importlib.metadata import requires as _requires
+    _reqs = _requires('snntoolbox') or []
+    requirements = [
+        r.split(';')[0].split('>=')[0].split('==')[0].split('<')[0].strip()
+        for r in _reqs if 'extra ==' not in r
+    ]
+except Exception:
     requirements = []
-    for s in f.readlines():
-        requirements.append(s.rstrip('\n').split('==')[0])
 
 
 @pytest.mark.parametrize('required_module', requirements)
