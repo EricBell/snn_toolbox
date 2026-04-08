@@ -9,6 +9,10 @@ Public API
     ir.LayerWeights
     ir.LayerType
     ir.DataFormat
+    protocols.ModelParserBase
+    protocols.SNNBackendBase
+    protocols.TelemetryHook
+    protocols.NullTelemetry
     registry.parser_registry
     registry.backend_registry
     adapters.keras_model_to_ir
@@ -24,6 +28,12 @@ from snntoolbox.core.ir import (
     LayerType,
     LayerWeights,
 )
+from snntoolbox.core.protocols import (
+    ModelParserBase,
+    NullTelemetry,
+    SNNBackendBase,
+    TelemetryHook,
+)
 from snntoolbox.core.registry import backend_registry, parser_registry
 
 __all__ = [
@@ -32,6 +42,10 @@ __all__ = [
     'IRModel',
     'LayerType',
     'LayerWeights',
+    'ModelParserBase',
+    'NullTelemetry',
+    'SNNBackendBase',
+    'TelemetryHook',
     'backend_registry',
     'parser_registry',
 ]
