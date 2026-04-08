@@ -871,80 +871,10 @@ class AbstractModelParser:
         return 'input'
 
 
-def absorb_bn_parameters(weight, bias, mean, var_eps_sqrt_inv, gamma, beta,
-                         axis, image_data_format, is_depthwise=False):
-    """
-    Absorb the parameters of a batch-normalization layer into the previous
-    layer.
-    """
-
-    axis = weight.ndim + axis if axis < 0 else axis
-
-    print("Using BatchNorm axis {}.".format(axis))
-
-    # Map batch norm axis from layer dimension space to kernel dimension space.
-    # Assumes that kernels are shaped like
-    # [height, width, num_input_channels, num_output_channels],
-    # and layers like [batch_size, channels, height, width] or
-    # [batch_size, height, width, channels].
-    if weight.ndim == 4:  # Conv2D
-
-        channel_axis = 2 if is_depthwise else 3
-
-        if image_data_format == 'channels_first':
-            layer2kernel_axes_map = [None, channel_axis, 0, 1]
-        else:
-            layer2kernel_axes_map = [None, 0, 1, channel_axis]
-
-        axis = layer2kernel_axes_map[axis]
-    elif weight.ndim == 3:  # Conv1D
-
-        channel_axis = 2
-
-        if image_data_format == 'channels_first':
-            layer2kernel_axes_map = [None, channel_axis, 0]
-        else:
-            layer2kernel_axes_map = [None, 0, channel_axis]
-
-        axis = layer2kernel_axes_map[axis]
-
-    broadcast_shape = [1] * weight.ndim
-    broadcast_shape[axis] = weight.shape[axis]
-    var_eps_sqrt_inv = np.reshape(var_eps_sqrt_inv, broadcast_shape)
-    gamma = np.reshape(gamma, broadcast_shape)
-    beta = np.reshape(beta, broadcast_shape)
-    bias = np.reshape(bias, broadcast_shape)
-    mean = np.reshape(mean, broadcast_shape)
-    bias_bn = np.ravel(beta + (bias - mean) * gamma * var_eps_sqrt_inv)
-    weight_bn = weight * gamma * var_eps_sqrt_inv
-
-    return weight_bn, bias_bn
-
-
-def modify_parameter_precision(weights, biases, config, attributes):
-    if config.getboolean('cell', 'binarize_weights'):
-        from snntoolbox.utils.utils import binarize
-        print("Binarizing weights.")
-        weights = binarize(weights)
-    elif config.getboolean('cell', 'quantize_weights'):
-        assert 'Qm.f' in attributes, \
-            "In the [cell] section of the configuration file, " \
-            "'quantize_weights' was set to True. For this to " \
-            "work, the layer needs to specify the fixed point " \
-            "number format 'Qm.f'."
-        from snntoolbox.utils.utils import reduce_precision
-        m, f = attributes.get('Qm.f')
-        print("Quantizing weights to Q{}.{}.".format(m, f))
-        weights = reduce_precision(weights, m, f)
-        if attributes.get('quantize_bias', False):
-            biases = reduce_precision(biases, m, f)
-
-    # These attributes are not needed any longer and would not be
-    # understood by Keras when building the parsed model.
-    attributes.pop('quantize_bias', None)
-    attributes.pop('Qm.f', None)
-
-    return weights, biases
+# Canonical implementations live in snntoolbox.core.spiking_params.
+# Re-exported here for backward compatibility.
+from snntoolbox.core.spiking_params import absorb_bn_parameters  # noqa: F401
+from snntoolbox.core.spiking_params import modify_parameter_precision  # noqa: F401
 
 
 def padding_string(pad, pool_size):

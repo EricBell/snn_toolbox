@@ -285,62 +285,12 @@ def binarize_var(w, h=1., deterministic=True):
     return keras.backend.cast_to_floatx(wb)
 
 
-def binarize(w, h=1., deterministic=True):
-    """Binarize weights.
-
-    Parameters
-    ----------
-
-    w: ndarray
-        Weights.
-    h: float
-        Values are round to ``+/-h``.
-    deterministic: bool
-        Whether to apply deterministic rounding.
-
-    Returns
-    -------
-
-    : ndarray
-        The binarized weights.
-    """
-
-    # [-1, 1] -> [0, 1]
-    wb = np.clip((np.add(np.true_divide(w, h), 1.)) / 2., 0, 1)
-
-    # Deterministic / stochastic rounding
-    wb = np.round(wb) if deterministic else np.random.binomial(1, wb)
-
-    # {0, 1} -> {-1, 1}
-    wb[wb != 0] = h
-    wb[wb == 0] = -h
-
-    return np.asarray(wb, np.float32)
+# Canonical implementation in snntoolbox.core.spiking_params.
+from snntoolbox.core.spiking_params import binarize  # noqa: F401
 
 
-def reduce_precision(x, m, f):
-    """Reduces precision of ``x`` to format ``Qm.f``.
-
-    Parameters
-    ----------
-
-    x : ndarray
-        Input data.
-    m : int
-        Number of integer bits.
-    f : int
-        Number of fractional bits.
-
-    Returns
-    -------
-
-    x_lp : ndarray
-        The input data with reduced precision.
-
-    """
-    n = 2 << f - 1
-    maxval = (2 << m - 1) - 1.0 / n
-    return np.clip(np.true_divide(np.round(x * n), n), -maxval, maxval)
+# Canonical implementation in snntoolbox.core.spiking_params.
+from snntoolbox.core.spiking_params import reduce_precision  # noqa: F401
 
 
 def reduce_precision_var(x, m, f):

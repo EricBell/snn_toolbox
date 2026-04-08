@@ -241,81 +241,11 @@ def normalize_parameters(model, config, **kwargs):
     print('')
 
 
-def get_scale_fac(activations, percentile):
-    """
-    Determine the activation value at ``percentile`` of the layer distribution.
-
-    Parameters
-    ----------
-
-    activations: np.array
-        The activations of cells in a specific layer, flattened to 1-d.
-
-    percentile: int
-        Percentile at which to determine activation.
-
-    Returns
-    -------
-
-    scale_fac: float
-        Maximum (or percentile) of activations in this layer.
-        Parameters of the respective layer are scaled by this value.
-    """
-
-    return np.percentile(activations, percentile) if activations.size else 1
-
-
-def get_percentile(config, layer_idx=None):
-    """Get percentile at which to draw the maximum activation of a layer.
-
-    Parameters
-    ----------
-
-    config: configparser.ConfigParser
-        Settings.
-
-    layer_idx: Optional[int]
-        Layer index.
-
-    Returns
-    -------
-
-    : int
-        Percentile.
-
-    """
-
-    perc = config.getfloat('normalization', 'percentile')
-
-    if config.getboolean('normalization', 'normalization_schedule'):
-        assert layer_idx >= 0, "Layer index needed for normalization schedule."
-        perc = apply_normalization_schedule(perc, layer_idx)
-
-    return perc
-
-
-def apply_normalization_schedule(perc, layer_idx):
-    """Transform percentile according to some rule, depending on layer index.
-
-    Parameters
-    ----------
-
-    perc: float
-        Original percentile.
-
-    layer_idx: int
-        Layer index, used to decrease the scale factor in higher layers, to
-        maintain high spike rates.
-
-    Returns
-    -------
-
-    : int
-        Modified percentile.
-
-    """
-
-    return int(perc - layer_idx * 0.02)
+# Canonical implementations in snntoolbox.core.spiking_params.
+# Re-exported here for backward compatibility.
+from snntoolbox.core.spiking_params import get_scale_fac  # noqa: F401
+from snntoolbox.core.spiking_params import get_percentile  # noqa: F401
+from snntoolbox.core.spiking_params import apply_normalization_schedule  # noqa: F401
 
 
 def get_activations_layer(layer_in, layer_out, x, batch_size=None):
