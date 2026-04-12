@@ -421,13 +421,18 @@ class AbstractSNN:
         print("Building spiking model...")
 
         self.parsed_model = parsed_model
-        self.num_classes = int(self.parsed_model.layers[-1].output_shape[-1])
+        self.num_classes = int(
+            tuple(self.parsed_model.layers[-1].output.shape)[-1])
         self.top_k = min(self.num_classes, self.config.getint('simulation',
                                                               'top_k'))
 
-        # Get batch input shape
-        batch_shape = \
-            list(fix_input_layer_shape(parsed_model.layers[0].input_shape))
+        # Get batch input shape. Keras 3 replaced ``InputLayer.input_shape``
+        # with ``batch_shape``.
+        input_layer = parsed_model.layers[0]
+        raw_shape = getattr(input_layer, 'batch_shape', None)
+        if raw_shape is None:
+            raw_shape = tuple(input_layer.output.shape)
+        batch_shape = list(fix_input_layer_shape(raw_shape))
         batch_shape[0] = self.batch_size
         if self.config.get('conversion', 'spike_code') == 'ttfs_dyn_thresh':
             batch_shape[0] *= 2
@@ -716,8 +721,19 @@ class AbstractSNN:
                 log_vars['avg_rate'] = self.get_avg_rate_from_trains()
                 print("Average spike rate: {} spikes per simulation time step."
                       "".format(log_vars['avg_rate']))
+            # Ragged variables (e.g., per-layer spiketrains) must be wrapped
+            # in an object array for numpy 2 which no longer auto-creates
+            # object arrays from inhomogeneous nested sequences.
+            save_vars = {}
+            for k, v in log_vars.items():
+                if isinstance(v, list) and v and isinstance(v[0], tuple):
+                    obj = np.empty(len(v), dtype=object)
+                    obj[:] = v
+                    save_vars[k] = obj
+                else:
+                    save_vars[k] = v
             np.savez_compressed(os.path.join(path_log_vars, str(batch_idx)),
-                                **log_vars)
+                                **save_vars)
 
             # More plotting.
             plot_vars = {}
@@ -817,7 +833,8 @@ class AbstractSNN:
         self.parsed_model = keras.models.load_model(os.path.join(
             self.config.get('paths', 'path_wd'),
             self.config.get('paths', 'filename_parsed_model') + '.h5'))
-        self.num_classes = int(self.parsed_model.layers[-1].output_shape[-1])
+        self.num_classes = int(
+            tuple(self.parsed_model.layers[-1].output.shape)[-1])
         self.top_k = min(self.num_classes, self.config.getint('simulation',
                                                               'top_k'))
         # Compute number of operations of ANN.
@@ -831,8 +848,8 @@ class AbstractSNN:
         """Initialize variables to record during simulation."""
 
         if 'input_b_l_t' in self._log_keys:
-            self.input_b_l_t = np.zeros(list(self.parsed_model.input_shape) +
-                                        [self._num_timesteps])
+            self.input_b_l_t = np.zeros(list(tuple(self.parsed_model.input.shape))
+                                        + [self._num_timesteps])
 
         if any({'spiketrains', 'spikerates', 'correlation', 'spikecounts',
                 'hist_spikerates_activations'} & self._plot_keys) \
@@ -841,7 +858,8 @@ class AbstractSNN:
             for layer in self.parsed_model.layers:
                 if not is_spiking(layer, self.config):
                     continue
-                shape = list(layer.output_shape) + [self._num_timesteps]
+                shape = list(tuple(layer.output.shape)) \
+                    + [self._num_timesteps]
                 self.spiketrains_n_b_l_t.append((np.zeros(shape, 'float32'),
                                                  layer.name))
 
@@ -850,8 +868,9 @@ class AbstractSNN:
             for layer in self.parsed_model.layers:
                 if not is_spiking(layer, self.config):
                     continue
-                self.spikerates_n_b_l.append((np.zeros(layer.output_shape,
-                                                       'float32'), layer.name))
+                self.spikerates_n_b_l.append(
+                    (np.zeros(tuple(layer.output.shape), 'float32'),
+                     layer.name))
 
         if 'operations' in self._plot_keys or \
                 'synaptic_operations_b_t' in self._log_keys:
@@ -866,7 +885,8 @@ class AbstractSNN:
             for layer in self.parsed_model.layers:
                 if not is_spiking(layer, self.config):
                     continue
-                shape = list(layer.output_shape) + [self._num_timesteps]
+                shape = list(tuple(layer.output.shape)) \
+                    + [self._num_timesteps]
                 self.mem_n_b_l_t.append((np.zeros(shape, 'float32'),
                                          layer.name))
 
@@ -909,14 +929,16 @@ class AbstractSNN:
 
         self.fanin = [0]
         self.fanout = [get_fanout(self.parsed_model.layers[0], self.config)]
-        self.num_neurons = [np.product(self.parsed_model.input_shape[1:])]
+        self.num_neurons = [
+            np.prod(tuple(self.parsed_model.input.shape)[1:])]
         self.num_neurons_with_bias = [0]
 
         for layer in self.parsed_model.layers:
             if is_spiking(layer, self.config):
                 self.fanin.append(get_fanin(layer))
                 self.fanout.append(get_fanout(layer, self.config))
-                self.num_neurons.append(np.prod(layer.output_shape[1:]))
+                self.num_neurons.append(
+                    np.prod(tuple(layer.output.shape)[1:]))
                 if hasattr(layer, 'bias') and layer.bias is not None and \
                         any(keras.backend.get_value(layer.bias)):
                     print("Detected layer with biases: {}".format(layer.name))

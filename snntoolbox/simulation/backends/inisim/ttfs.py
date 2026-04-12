@@ -412,7 +412,7 @@ class SpikeDense(Dense, SpikeLayer):
         """
 
         Dense.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
     @spike_call
     def call(self, x, **kwargs):
@@ -436,7 +436,7 @@ class SpikeConv2D(Conv2D, SpikeLayer):
         """
 
         Conv2D.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
     @spike_call
     def call(self, x, mask=None):
@@ -460,7 +460,7 @@ class SpikeDepthwiseConv2D(DepthwiseConv2D, SpikeLayer):
         """
 
         DepthwiseConv2D.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
     @spike_call
     def call(self, x, mask=None):
@@ -484,7 +484,7 @@ class SpikeAveragePooling2D(AveragePooling2D, SpikeLayer):
         """
 
         AveragePooling2D.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
     @spike_call
     def call(self, x, mask=None):
@@ -507,7 +507,7 @@ class SpikeMaxPooling2D(MaxPooling2D, SpikeLayer):
         """
 
         MaxPooling2D.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
     def call(self, x, mask=None):
         """Layer functionality."""

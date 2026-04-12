@@ -53,10 +53,9 @@ class SNN(AbstractSNN):
             self._input_images
 
     def add_layer(self, layer):
-        from snntoolbox.parsing.utils import get_type
+        from snntoolbox.parsing.utils import get_inbound_layers, get_type
         spike_layer_name = getattr(self.sim, 'Spike' + get_type(layer))
-        # noinspection PyProtectedMember
-        inbound = layer._inbound_nodes[0].inbound_layers
+        inbound = get_inbound_layers(layer)
         if not isinstance(inbound, (list, tuple)):
             inbound = [inbound]
         inbound = [self._spiking_layers[inb.name] for inb in inbound]
@@ -102,33 +101,42 @@ class SNN(AbstractSNN):
         self.snn = keras.models.Model(
             self._input_images,
             self._spiking_layers[self.parsed_model.layers[-1].name])
-        self.snn.compile('sgd', 'categorical_crossentropy', ['accuracy'])
+        self.snn.compile('sgd', 'categorical_crossentropy',
+                         metrics=['accuracy'])
 
         # Tensorflow 2 lists all variables as weights, including our state
         # variables (membrane potential etc). So a simple
         # snn.set_weights(parsed_model.get_weights()) does not work any more.
         # Need to extract the actual weights here.
 
-        parameter_map = {remove_name_counter(p.name): v for p, v in
+        # Keras 3 variables expose only the parameter name (e.g. ``kernel``)
+        # via ``.name``; the fully qualified ``<layer>/<param>`` string lives
+        # on ``.path``. Fall back to ``.name`` for Keras 2 compatibility.
+        def _weight_key(p):
+            return remove_name_counter(getattr(p, 'path', None) or p.name)
+
+        parameter_map = {_weight_key(p): v for p, v in
                          zip(self.parsed_model.weights,
                              self.parsed_model.get_weights())}
         count = 0
         for p in self.snn.weights:
-            name = remove_name_counter(p.name)
+            name = _weight_key(p)
             if name in parameter_map:
-                keras.backend.set_value(p, parameter_map[name])
+                # ``keras.backend.set_value`` was removed from Keras 3 proper
+                # and the legacy implementation no longer handles string
+                # dtypes. Variables expose ``assign`` directly.
+                p.assign(parameter_map[name])
                 count += 1
         assert count == len(parameter_map), "Not all weights have been " \
                                             "transferred from ANN to SNN."
 
         for layer in self.snn.layers:
-            if hasattr(layer, 'bias'):
+            if hasattr(layer, 'bias') and layer.bias is not None:
                 # Adjust biases to time resolution of simulator.
-                bias = keras.backend.get_value(layer.bias) * self._dt
-                keras.backend.set_value(layer.bias, bias)
+                bias = np.asarray(layer.bias) * self._dt
+                layer.bias.assign(bias)
                 if self.config.getboolean('cell', 'bias_relaxation'):
-                    keras.backend.set_value(
-                        layer.b0, keras.backend.get_value(layer.bias))
+                    layer.b0.assign(np.asarray(layer.bias))
 
     def simulate(self, **kwargs):
 

@@ -54,11 +54,18 @@ class ModelParser(AbstractModelParser):
         return attributes
 
     def get_input_shape(self):
-        return \
-            fix_input_layer_shape(self.get_layer_iterable()[0].input_shape)[1:]
+        # In Keras 3, ``InputLayer`` no longer exposes ``input_shape``; use the
+        # ``batch_shape`` attribute (or fall back to the output tensor shape).
+        input_layer = self.get_layer_iterable()[0]
+        shape = getattr(input_layer, 'batch_shape', None)
+        if shape is None:
+            shape = tuple(input_layer.output.shape)
+        return fix_input_layer_shape(shape)[1:]
 
     def get_output_shape(self, layer):
-        return layer.output_shape
+        # Keras 3 removed ``layer.output_shape``; derive it from the output
+        # tensor's shape instead.
+        return tuple(layer.output.shape)
 
     def parse_sparse(self, layer, attributes):
         return self.parse_dense(layer, attributes)
@@ -67,7 +74,7 @@ class ModelParser(AbstractModelParser):
         attributes['parameters'] = list(layer.get_weights())
         if layer.bias is None:
             attributes['parameters'].insert(
-                1, np.zeros(layer.output_shape[1]))
+                1, np.zeros(layer.output.shape[1]))
             attributes['parameters'] = tuple(attributes['parameters'])
             attributes['use_bias'] = True
 
@@ -165,7 +172,7 @@ def load(path, filename, **kwargs):
         # at inference time, set them to the most common choice.
         # TODO: Proper reinstantiation should be doable since Keras2
         model.compile('sgd', 'categorical_crossentropy',
-                      ['accuracy', metrics.top_k_categorical_accuracy])
+                      metrics=['accuracy', metrics.top_k_categorical_accuracy])
     else:
         filepath_custom_objects = kwargs.get('filepath_custom_objects', None)
         if filepath_custom_objects is not None:
@@ -181,7 +188,7 @@ def load(path, filename, **kwargs):
             print("Trying to load without '.h5' extension.")
             model = models.load_model(filepath, custom_dicts)
         model.compile(model.optimizer, model.loss,
-                      ['accuracy', metrics.top_k_categorical_accuracy])
+                      metrics=['accuracy', metrics.top_k_categorical_accuracy])
 
     model.summary()
     return {'model': model, 'val_fn': model.evaluate}

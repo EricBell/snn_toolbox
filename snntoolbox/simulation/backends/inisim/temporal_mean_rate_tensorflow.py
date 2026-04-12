@@ -332,7 +332,11 @@ class SpikeLayer(Layer):
         """
 
         if output_shape is None:
-            output_shape = self.output_shape
+            # Keras 3 layers do not expose ``output_shape``. Fall back to the
+            # cached shape recorded during ``build``/``init_neurons``.
+            output_shape = getattr(self, '_output_shape', None)
+            if output_shape is None:
+                output_shape = self.output_shape
 
         if mode == 'uniform':
             init_mem = tf.random.uniform(output_shape,
@@ -384,6 +388,10 @@ class SpikeLayer(Layer):
         from snntoolbox.bin.utils import get_log_keys, get_plot_keys
 
         output_shape = self.compute_output_shape(input_shape)
+        # Cache the shape so downstream methods (e.g. ``reset_spikevars``)
+        # don't need to rely on the ``layer.output_shape`` attribute, which
+        # was removed in Keras 3.
+        self._output_shape = tuple(output_shape)
         if self.v_thresh is None:  # Need this check because of @tf.function.
             self.v_thresh = tf.Variable(self._v_thresh, name='v_thresh',
                                         trainable=False)
@@ -547,8 +555,12 @@ class SpikeFlatten(Flatten):
         Flatten.__init__(self, **kwargs)
 
     def call(self, x, mask=None):
-
+        # ``mask`` is accepted for backward compatibility but Keras 3's
+        # Flatten does not support it; forward only ``x``.
         return super(SpikeFlatten, self).call(x)
+
+    def compute_output_spec(self, x, mask=None):
+        return super().compute_output_spec(x)
 
     @staticmethod
     def get_time():
@@ -579,6 +591,9 @@ class SpikeZeroPadding2D(ZeroPadding2D):
 
         return ZeroPadding2D.call(self, x)
 
+    def compute_output_spec(self, x, mask=None):
+        return super().compute_output_spec(x)
+
     @staticmethod
     def get_time():
 
@@ -607,6 +622,9 @@ class SpikeReshape(Reshape):
     def call(self, x, mask=None):
 
         return Reshape.call(self, x)
+
+    def compute_output_spec(self, x, mask=None):
+        return super().compute_output_spec(x)
 
     @staticmethod
     def get_time():
@@ -640,7 +658,7 @@ class SpikeDense(Dense, SpikeLayer):
         """
 
         Dense.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
         if self.config.getboolean('cell', 'bias_relaxation'):
             self.update_b()
@@ -667,7 +685,7 @@ class SpikeConv1D(Conv1D, SpikeLayer):
         """
 
         Conv1D.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
         if self.config.getboolean('cell', 'bias_relaxation'):
             self.update_b()
@@ -694,7 +712,7 @@ class SpikeConv2D(Conv2D, SpikeLayer):
         """
 
         Conv2D.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
         if self.config.getboolean('cell', 'bias_relaxation'):
             self.update_b()
@@ -721,7 +739,7 @@ class SpikeDepthwiseConv2D(DepthwiseConv2D, SpikeLayer):
         """
 
         DepthwiseConv2D.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
         if self.config.getboolean('cell', 'bias_relaxation'):
             self.update_b()
@@ -747,7 +765,7 @@ class SpikeConv2DTranspose(Conv2DTranspose, SpikeLayer):
         """
 
         Conv2DTranspose.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
         if self.config.getboolean('cell', 'bias_relaxation'):
             self.update_b()
@@ -773,7 +791,7 @@ class SpikeUpSampling2D(UpSampling2D, SpikeLayer):
         """
 
         UpSampling2D.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
     @spike_call
     def call(self, x, mask=None):
@@ -797,7 +815,7 @@ class SpikeAveragePooling2D(AveragePooling2D, SpikeLayer):
         """
 
         AveragePooling2D.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
 
     @spike_call
     def call(self, x, mask=None):
@@ -820,7 +838,7 @@ class SpikeMaxPooling2D(MaxPooling2D, SpikeLayer):
         """
 
         MaxPooling2D.build(self, input_shape)
-        self.init_neurons(input_shape.as_list())
+        self.init_neurons(list(input_shape))
         if self.mem_input is None:
             self.mem_input = tf.Variable(tf.zeros(input_shape),
                                          name='mem_input', trainable=False)

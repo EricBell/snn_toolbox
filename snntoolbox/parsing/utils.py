@@ -43,6 +43,27 @@ import numpy as np
 IS_CHANNELS_FIRST = keras.backend.image_data_format() == 'channels_first'
 
 
+def _keras_layer_output_shape(layer):
+    """Return the output shape of a Keras layer.
+
+    Keras 3 removed the ``layer.output_shape`` attribute; use the output
+    tensor's ``.shape`` instead. Falls back to the legacy attribute when
+    available (e.g. for non-Keras adapter objects).
+    """
+    out = getattr(layer, 'output', None)
+    if out is not None and hasattr(out, 'shape'):
+        return tuple(out.shape)
+    return layer.output_shape
+
+
+def _keras_layer_input_shape(layer):
+    """Return the input shape of a Keras layer (Keras 3 compatible)."""
+    inp = getattr(layer, 'input', None)
+    if inp is not None and hasattr(inp, 'shape'):
+        return tuple(inp.shape)
+    return layer.input_shape
+
+
 class AbstractModelParser:
     """Abstract base class for neural network model parsers.
 
@@ -169,14 +190,14 @@ class AbstractModelParser:
                 self._layer_list.append(
                     {'layer_type': _layer_type,
                      'name': self.get_name(layer, idx, _layer_type),
-                     'pool_size': (layer.input_shape[axis: axis + 2]),
+                     'pool_size': (tuple(layer.input.shape)[axis: axis + 2]),
                      'inbound': self.get_inbound_names(layer, name_map),
                      'strides': [1, 1]})
                 name_map[_layer_type + str(idx)] = idx
                 idx += 1
                 _layer_type = 'Flatten'
                 num_str = self.format_layer_idx(idx)
-                shape_str = str(np.prod(layer.output_shape[1:]))
+                shape_str = str(np.prod(self.get_output_shape(layer)[1:]))
                 self._layer_list.append(
                     {'name': num_str + _layer_type + '_' + shape_str,
                      'layer_type': _layer_type,
@@ -187,7 +208,7 @@ class AbstractModelParser:
 
             if layer_type == 'Add':
                 print("Replacing Add layer by Concatenate plus Conv.")
-                shape = layer.output_shape
+                shape = self.get_output_shape(layer)
                 if IS_CHANNELS_FIRST:
                     axis = 1
                     c, h, w = shape[1:]
@@ -814,7 +835,14 @@ class AbstractModelParser:
             if len(inbound) == 1:
                 inbound = inbound[0]
             check_for_custom_activations(layer)
-            parsed_layers[layer['name']] = parsed_layer(**layer)(inbound)
+            # Keras 3 removed the ``weights`` constructor kwarg; apply weights
+            # after construction instead.
+            init_weights = layer.pop('weights', None)
+            parsed_layer_instance = parsed_layer(**layer)
+            out_tensor = parsed_layer_instance(inbound)
+            if init_weights is not None:
+                parsed_layer_instance.set_weights(list(init_weights))
+            parsed_layers[layer['name']] = out_tensor
 
         print("Compiling parsed model...\n")
         self.parsed_model = keras.models.Model(img_input, parsed_layers[
@@ -823,7 +851,7 @@ class AbstractModelParser:
         top_k = keras.metrics.TopKCategoricalAccuracy(
             self.config.getint('simulation', 'top_k'))
         self.parsed_model.compile('sgd', 'categorical_crossentropy',
-                                  ['accuracy', top_k])
+                                  metrics=['accuracy', top_k])
         # Todo: Enable adding custom metric via self.input_model.metrics.
         self.parsed_model.summary()
         return self.parsed_model
@@ -1036,8 +1064,14 @@ def get_inbound_layers(layer):
     try:
         # noinspection PyProtectedMember
         inbound_layers = layer._inbound_nodes[0].inbound_layers
-    except AttributeError:  # For Keras backward-compatibility.
-        inbound_layers = layer.inbound_nodes[0].inbound_layers
+    except AttributeError:
+        try:
+            # Keras 3 replaced ``inbound_layers`` with ``parent_nodes``.
+            # noinspection PyProtectedMember
+            parent_nodes = layer._inbound_nodes[0].parent_nodes
+            inbound_layers = [node.operation for node in parent_nodes]
+        except AttributeError:  # For Keras backward-compatibility.
+            inbound_layers = layer.inbound_nodes[0].inbound_layers
     if not isinstance(inbound_layers, (list, tuple)):
         inbound_layers = [inbound_layers]
     return inbound_layers
@@ -1064,7 +1098,10 @@ def get_outbound_layers(layer):
         outbound_nodes = layer._outbound_nodes
     except AttributeError:  # For Keras backward-compatibility.
         outbound_nodes = layer.outbound_nodes
-    return [on.outbound_layer for on in outbound_nodes]
+    # Keras 3 exposes the downstream layer via ``operation`` instead of
+    # ``outbound_layer``.
+    return [getattr(on, 'outbound_layer', None) or on.operation
+            for on in outbound_nodes]
 
 
 def get_outbound_activation(layer):
@@ -1115,9 +1152,9 @@ def get_fanin(layer):
     layer_type = get_type(layer)
     if 'Conv' in layer_type:
         ax = 1 if IS_CHANNELS_FIRST else -1
-        fanin = np.prod(layer.kernel_size) * layer.input_shape[ax]
+        fanin = np.prod(layer.kernel_size) * _keras_layer_input_shape(layer)[ax]
     elif 'Dense' in layer_type:
-        fanin = layer.input_shape[1]
+        fanin = _keras_layer_input_shape(layer)[1]
     elif 'Pool' in layer_type:
         fanin = 0
     else:
@@ -1156,7 +1193,7 @@ def get_fanout(layer, config):
     fanout = 0
     for next_layer in next_layers:
         if 'Conv' in next_layer.name and not has_stride_unity(next_layer):
-            shape = layer.output_shape
+            shape = _keras_layer_output_shape(layer)
             if 'Input' in get_type(layer):
                 shape = fix_input_layer_shape(shape)
             fanout = np.zeros(shape[1:])
@@ -1194,7 +1231,7 @@ def get_fanout_array(layer_pre, layer_post, is_depthwise_conv=False):
     the post-synaptic layer has stride > 1, the fan-out varies between neurons.
     """
 
-    shape = layer_pre.output_shape
+    shape = _keras_layer_output_shape(layer_pre)
     if 'Input' in get_type(layer_pre):
         shape = fix_input_layer_shape(shape)
     ndim = len(shape)
@@ -1210,13 +1247,14 @@ def get_fanout_array(layer_pre, layer_post, is_depthwise_conv=False):
 def _get_fanout_array_1D(layer_pre, layer_post, is_depthwise_conv=False):
     ax = 1 if IS_CHANNELS_FIRST else 0
 
-    ny = layer_post.output_shape[1 + ax]  # Height of feature map
-    nz = layer_post.output_shape[ax if ax else -1]  # Number of channels
+    post_shape = _keras_layer_output_shape(layer_post)
+    ny = post_shape[1 + ax]  # Height of feature map
+    nz = post_shape[ax if ax else -1]  # Number of channels
     ky = layer_post.kernel_size[0]  # Height of kernel
     py = int((ky - 1) / 2) if layer_post.padding == 'same' else 0
     sy = layer_post.strides[0]
 
-    shape = layer_pre.output_shape
+    shape = _keras_layer_output_shape(layer_pre)
     if 'Input' in get_type(layer_pre):
         shape = fix_input_layer_shape(shape)
     fanout = np.zeros(shape[1:])
@@ -1245,16 +1283,17 @@ def _get_fanout_array_1D(layer_pre, layer_post, is_depthwise_conv=False):
 def _get_fanout_array_2D(layer_pre, layer_post, is_depthwise_conv=False):
     ax = 1 if IS_CHANNELS_FIRST else 0
 
-    nx = layer_post.output_shape[2 + ax]  # Width of feature map
-    ny = layer_post.output_shape[1 + ax]  # Height of feature map
-    nz = layer_post.output_shape[ax if ax else -1]  # Number of channels
+    post_shape = _keras_layer_output_shape(layer_post)
+    nx = post_shape[2 + ax]  # Width of feature map
+    ny = post_shape[1 + ax]  # Height of feature map
+    nz = post_shape[ax if ax else -1]  # Number of channels
     kx, ky = layer_post.kernel_size  # Width and height of kernel
     px = int((kx - 1) / 2) if layer_post.padding == 'same' else 0
     py = int((ky - 1) / 2) if layer_post.padding == 'same' else 0
     sx = layer_post.strides[1]
     sy = layer_post.strides[0]
 
-    shape = layer_pre.output_shape
+    shape = _keras_layer_output_shape(layer_pre)
     if 'Input' in get_type(layer_pre):
         shape = fix_input_layer_shape(shape)
     fanout = np.zeros(shape[1:])

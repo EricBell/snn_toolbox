@@ -76,7 +76,7 @@ def normalize_parameters(model, config, **kwargs):
             x_norm = np.concatenate(x_norm)
         print("Using {} samples for normalization.".format(len(x_norm)))
         sizes = [
-            len(x_norm) * np.array(layer.output_shape[1:]).prod() * 32 /
+            len(x_norm) * np.array(tuple(layer.output.shape)[1:]).prod() * 32 /
             (8 * 1e9) for layer in model.layers if len(layer.weights) > 0]
         size_str = ['{:.2f}'.format(s) for s in sizes]
         print("INFO: Need {} GB for layer activations.\n".format(size_str) +
@@ -234,7 +234,7 @@ def normalize_parameters(model, config, **kwargs):
             scale_fac = scale_facs[layer.name]
             plot_hist(activation_dict, 'Activation', label, norm_dir,
                       scale_fac)
-            ax = tuple(np.arange(len(layer.output_shape))[1:])
+            ax = tuple(np.arange(len(tuple(layer.output.shape)))[1:])
             plot_max_activ_hist(
                 {'Activations_max': np.max(activations, axis=ax)},
                 'Maximum Activation', label, norm_dir, scale_fac)

@@ -45,7 +45,7 @@ def get_model_maxpool2D_1(dataset):
 
     model = Model(input_layer, layer)
 
-    model.compile('adam', 'categorical_crossentropy', ['accuracy'])
+    model.compile('adam', 'categorical_crossentropy', metrics=['accuracy'])
 
     history = model.fit(x_train, y_train, batch_size=64, epochs=1, verbose=2,
                         validation_data=(x_test, y_test))

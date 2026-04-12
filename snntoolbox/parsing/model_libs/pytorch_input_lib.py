@@ -122,7 +122,7 @@ def load(path, filename):
 
     # Save the keras model.
     model_keras.compile('sgd', 'categorical_crossentropy',
-                        ['accuracy', metrics.top_k_categorical_accuracy])
+                        metrics=['accuracy', metrics.top_k_categorical_accuracy])
     models.save_model(model_keras, filepath + '.h5')
 
     # Compute Keras output and compare against ONNX.

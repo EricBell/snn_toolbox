@@ -163,7 +163,7 @@ def get_model_1(dataset):
                    kernel_size=(3, 3),
                    activation='relu',
                    use_bias=False)(layer)
-    layer = AveragePooling2D()(layer)
+    layer = AveragePooling2D(pool_size=(2, 2))(layer)
     layer = Conv2D(filters=8,
                    kernel_size=(3, 3),
                    padding='same',
@@ -177,7 +177,7 @@ def get_model_1(dataset):
 
     model = Model(input_layer, layer)
 
-    model.compile('adam', 'categorical_crossentropy', ['accuracy'])
+    model.compile('adam', 'categorical_crossentropy', metrics=['accuracy'])
 
     history = model.fit(x_train, y_train, batch_size=64, epochs=1, verbose=2,
                         validation_data=(x_test, y_test))
@@ -201,7 +201,7 @@ def _model_2(_dataset):
                    strides=(2, 2))(input_layer)
     layer = BatchNormalization(axis=axis)(layer)
     layer = Activation('relu')(layer)
-    layer = AveragePooling2D()(layer)
+    layer = AveragePooling2D(pool_size=(2, 2))(layer)
     branch1 = Conv2D(filters=32,
                      kernel_size=(3, 3),
                      padding='same',
@@ -220,7 +220,7 @@ def _model_2(_dataset):
 
     model = Model(input_layer, layer)
 
-    model.compile('adam', 'categorical_crossentropy', ['accuracy'])
+    model.compile('adam', 'categorical_crossentropy', metrics=['accuracy'])
 
     # Train model with backprop.
     history = model.fit(x_train, y_train, batch_size=64, epochs=1, verbose=2,
@@ -251,7 +251,7 @@ def _model_3(_dataset):
                          strides=(2, 2))(input_layer)
     layer = BatchNormalization(axis=axis)(layer)
     layer = Activation('relu')(layer)
-    layer = AveragePooling2D()(layer)
+    layer = AveragePooling2D(pool_size=(2, 2))(layer)
     branch1 = SparseConv2D(filters=32,
                            kernel_size=(3, 3),
                            padding='same',
@@ -269,7 +269,7 @@ def _model_3(_dataset):
 
     model = Model(input_layer, layer)
 
-    model.compile('adam', 'categorical_crossentropy', ['accuracy'])
+    model.compile('adam', 'categorical_crossentropy', metrics=['accuracy'])
 
     # Train model with backprop.
     history = model.fit(x_train, y_train, batch_size=64, epochs=1, verbose=2,

@@ -42,7 +42,8 @@ class SNN(SNN_):
         self.snn = tf.keras.models.Model(
             self._input_images,
             self._spiking_layers[self.parsed_model.layers[-1].name])
-        self.snn.compile('sgd', 'categorical_crossentropy', ['accuracy'])
+        self.snn.compile('sgd', 'categorical_crossentropy',
+                         metrics=['accuracy'])
 
         # Tensorflow 2 lists all variables as weights, including our state
         # variables (membrane potential etc). So a simple

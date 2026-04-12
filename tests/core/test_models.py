@@ -55,7 +55,7 @@ class TestInputModel:
         input_model = models.clone_model(_model_2)
         input_model.set_weights(_model_2.get_weights())
         input_model.compile(_model_2.optimizer.__class__.__name__,
-                            _model_2.loss, _model_2.metrics)
+                            _model_2.loss, metrics=_model_2.metrics)
 
         num_to_test = 10000
         batch_size = 100
@@ -83,7 +83,7 @@ class TestInputModel:
         input_model = models.clone_model(_model_2)
         input_model.set_weights(_model_2.get_weights())
         input_model.compile(_model_2.optimizer.__class__.__name__,
-                            _model_2.loss, _model_2.metrics)
+                            _model_2.loss, metrics=_model_2.metrics)
 
         num_to_test = 10000
         batch_size = 100
