@@ -658,7 +658,7 @@ class SNNBackendBase(ABC):
                 x_b = x_test[start:end]
                 y_b = y_test[start:end] if y_test is not None else None
             else:
-                x_b, y_b = dataflow.next()
+                x_b, y_b = next(dataflow)
 
             if len(x_b) < self.batch_size:
                 continue

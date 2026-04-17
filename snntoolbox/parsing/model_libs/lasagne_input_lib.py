@@ -216,7 +216,7 @@ def evaluate(val_fn, batch_size, num_to_test, x_test=None, y_test=None,
             x_batch = x_test[i*batch_size: (i+1)*batch_size]
             y_batch = y_test[i*batch_size: (i+1)*batch_size]
         else:
-            x_batch, y_batch = dataflow.next()
+            x_batch, y_batch = next(dataflow)
         new_loss, new_err = val_fn(x_batch, y_batch)
         err += new_err
         loss += new_loss

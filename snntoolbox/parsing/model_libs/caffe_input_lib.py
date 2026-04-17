@@ -238,7 +238,7 @@ def evaluate(val_fn, batch_size, num_to_test, x_test=None, y_test=None,
             x_batch = x_test[i*batch_size: (i+1)*batch_size]
             y_batch = y_test[i*batch_size: (i+1)*batch_size]
         else:
-            x_batch, y_batch = dataflow.next()
+            x_batch, y_batch = next(dataflow)
         out = val_fn(data=x_batch)
         guesses = np.argmax([out[key] for key in out.keys()][0], axis=1)
         truth = np.argmax(y_batch, axis=1)

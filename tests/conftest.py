@@ -373,12 +373,10 @@ brian2_conditions = (is_module_installed('brian2'))
 brian2_skip_if_dependency_missing = pytest.mark.skipif(
     not brian2_conditions, reason="Brian2 dependency missing.")
 
-pytorch_conditions = (is_module_installed('torch') and
-                      is_module_installed('onnx') and
-                      is_module_installed('onnx2keras') and
-                      len(tf.config.list_physical_devices('GPU')))
+pytorch_conditions = False  # onnx2keras is incompatible with Keras 3
 pytorch_skip_if_dependency_missing = pytest.mark.skipif(
-    not pytorch_conditions, reason='Pytorch dependencies missing.')
+    not pytorch_conditions,
+    reason='onnx2keras incompatible with Keras 3 (uses legacy weights= kwarg).')
 
 loihi_conditions = (is_module_installed('nxsdk-apps') and
                     is_module_installed('nxsdk_modules_ncl'))

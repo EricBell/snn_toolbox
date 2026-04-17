@@ -2,12 +2,13 @@
 
 """Test snntoolbox GUI."""
 
+import os
 import shutil
 import time
 import pytest
 
 
-@pytest.mark.skip("Passes when all dependencies are installed properly.")
+@pytest.mark.skipif(not os.environ.get('DISPLAY'), reason="No DISPLAY available")
 def test_gui(_config):
     from snntoolbox.bin.gui.gui import tk, SNNToolboxGUI
 

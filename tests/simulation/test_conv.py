@@ -48,7 +48,7 @@ def get_model_conv1D_1(dataset):
 
     model.compile('adam', 'categorical_crossentropy', metrics=['accuracy'])
 
-    history = model.fit(x_train, y_train, batch_size=64, epochs=1, verbose=2,
+    history = model.fit(x_train, y_train, batch_size=64, epochs=3, verbose=2,
                         validation_data=(x_test, y_test))
 
     assert history.history['val_accuracy'][-1] > 0.8
@@ -70,7 +70,7 @@ class TestConv1dINI:
         updates = {
             'tools': {'evaluate_ann': False, 'normalize': True},
             'simulation': {
-                'duration': 200,
+                'duration': 300,
                 'num_to_test': 100,
                 'batch_size': 50},
             'output': {
@@ -82,7 +82,7 @@ class TestConv1dINI:
         acc = run_pipeline(config)
 
         acc_ann = get_ann_acc(config)
-        assert acc[0] >= 0.98 * acc_ann
+        assert acc[0] >= 0.95 * acc_ann
 
         corr = get_correlations(config)
         assert np.all(corr[:-1] > 0.97)

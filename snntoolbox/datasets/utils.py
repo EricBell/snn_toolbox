@@ -122,7 +122,7 @@ def get_dataset(config):
             # (std, mean, and principal components if ZCA whitening is applied)
             rs = datagen_kwargs.get('rescale', None)
             x_orig = ImageDataGenerator(rescale=rs).flow_from_directory(
-                **dataflow_kwargs).next()[0]
+                **dataflow_kwargs).__next__()[0]
             datagen.fit(x_orig)
         if is_normset_needed:
             shuffle = dataflow_kwargs.get('shuffle')

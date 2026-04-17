@@ -69,7 +69,7 @@ def normalize_parameters(model, config, **kwargs):
             if num_samples_norm == '':
                 num_samples_norm = len(dataflow) * dataflow.batch_size
             while len(x_norm) * batch_size < num_samples_norm:
-                x = dataflow.next()
+                x = next(dataflow)
                 if isinstance(x, tuple):  # Remove class label if present.
                     x = x[0]
                 x_norm.append(x)

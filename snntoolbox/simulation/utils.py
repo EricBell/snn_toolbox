@@ -585,7 +585,7 @@ class AbstractSNN:
                 if y_test is not None:
                     y_b_l = y_test[batch_idxs, :]
             elif dataflow is not None:
-                x_b_l, y_b_l = dataflow.next()
+                x_b_l, y_b_l = next(dataflow)
             elif self._is_aedat_input:
                 try:
                     data_batch_kwargs['dvs_gen'].next_sequence_batch()
@@ -1193,7 +1193,7 @@ def get_samples_from_list(x_test, y_test, dataflow, config):
             y_test = []
             target_idx = si.pop(0)
             while len(x_test) < num_to_test:
-                x_b_l, y_b = dataflow.next()
+                x_b_l, y_b = next(dataflow)
                 for i in range(batch_size):
                     if batch_idx * batch_size + i == target_idx:
                         x_test.append(x_b_l[i])
