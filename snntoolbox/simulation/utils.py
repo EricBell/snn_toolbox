@@ -19,8 +19,10 @@ from tensorflow import keras
 from snntoolbox.bin.utils import get_log_keys, get_plot_keys, \
     initialize_simulator
 from snntoolbox.conversion.utils import get_activations_batch
+from snntoolbox.core import connectivity as ir_connectivity
+from snntoolbox.core.adapters import keras_model_to_ir
 from snntoolbox.parsing.utils import get_type, fix_input_layer_shape, \
-    get_fanout, get_fanin, get_outbound_layers
+    get_outbound_layers
 from snntoolbox.utils.utils import echo, in_top_k
 
 
@@ -141,6 +143,7 @@ class AbstractSNN:
         self.config = config
         self.queue = queue
         self.parsed_model = None
+        self.ir_model = None
         self.is_built = False
         self._batch_size = None  # Store original batch_size here.
         self.batch_size = self.adjust_batchsize()
@@ -421,19 +424,19 @@ class AbstractSNN:
         print("Building spiking model...")
 
         self.parsed_model = parsed_model
-        self.num_classes = int(
-            tuple(self.parsed_model.layers[-1].output.shape)[-1])
+        # Build the framework-agnostic IR once so downstream bookkeeping
+        # (shapes, fan-in/fan-out, connectivity stats, num_classes) can run
+        # on plain numpy objects rather than poking at Keras-layer attrs.
+        self.ir_model = keras_model_to_ir(
+            parsed_model, data_format=self.data_format,
+        )
+        self.num_classes = int(self.ir_model.num_classes)
         self.top_k = min(self.num_classes, self.config.getint('simulation',
                                                               'top_k'))
 
-        # Get batch input shape. Keras 3 replaced ``InputLayer.input_shape``
-        # with ``batch_shape``.
-        input_layer = parsed_model.layers[0]
-        raw_shape = getattr(input_layer, 'batch_shape', None)
-        if raw_shape is None:
-            raw_shape = tuple(input_layer.output.shape)
-        batch_shape = list(fix_input_layer_shape(raw_shape))
-        batch_shape[0] = self.batch_size
+        # Get batch input shape from the IR.  The IR stores the model input
+        # shape *without* the batch dim; prepend the current batch size.
+        batch_shape = [self.batch_size] + list(self.ir_model.input_shape)
         if self.config.get('conversion', 'spike_code') == 'ttfs_dyn_thresh':
             batch_shape[0] *= 2
 
@@ -550,9 +553,7 @@ class AbstractSNN:
         # If DVS events are used as input, instantiate a DVSIterator.
         if self._is_aedat_input:
             from snntoolbox.datasets.aedat.DVSIterator import DVSIterator
-            batch_shape = list(np.array(
-                self.parsed_model.layers[0].input_shape, int).flatten())
-            batch_shape[0] = self.batch_size
+            batch_shape = [self.batch_size] + list(self.ir_model.input_shape)
             # Get shape of input image, in case we need to subsample.
             image_shape = batch_shape[1:3] \
                 if self.data_format == 'channels_last' else batch_shape[2:]
@@ -648,7 +649,7 @@ class AbstractSNN:
 
             # Evaluate ANN on the same batch as SNN for a direct comparison.
             score = self.parsed_model.evaluate(
-                x_b_l, y_b_l, self.parsed_model.input_shape[0], verbose=0)
+                x_b_l, y_b_l, batch_size=self.batch_size, verbose=0)
             score1_ann += score[1] * self.batch_size
             score5_ann += score[2] * self.batch_size
             self.top1err_ann = 1 - score1_ann / num_samples_seen
@@ -833,8 +834,10 @@ class AbstractSNN:
         self.parsed_model = keras.models.load_model(os.path.join(
             self.config.get('paths', 'path_wd'),
             self.config.get('paths', 'filename_parsed_model') + '.h5'))
-        self.num_classes = int(
-            tuple(self.parsed_model.layers[-1].output.shape)[-1])
+        self.ir_model = keras_model_to_ir(
+            self.parsed_model, data_format=self.data_format,
+        )
+        self.num_classes = int(self.ir_model.num_classes)
         self.top_k = min(self.num_classes, self.config.getint('simulation',
                                                               'top_k'))
         # Compute number of operations of ANN.
@@ -847,30 +850,33 @@ class AbstractSNN:
     def init_log_vars(self):
         """Initialize variables to record during simulation."""
 
+        # All shape bookkeeping here is IR-driven: no framework attributes
+        # are read.  The IR is built once in ``build``/``restore_snn``.
+        ir = self.ir_model
+        input_shape_with_batch = list(ir.input_layer.output_shape)
+
         if 'input_b_l_t' in self._log_keys:
-            self.input_b_l_t = np.zeros(list(tuple(self.parsed_model.input.shape))
-                                        + [self._num_timesteps])
+            self.input_b_l_t = np.zeros(
+                input_shape_with_batch + [self._num_timesteps])
 
         if any({'spiketrains', 'spikerates', 'correlation', 'spikecounts',
                 'hist_spikerates_activations'} & self._plot_keys) \
                 or 'spiketrains_n_b_l_t' in self._log_keys:
             self.spiketrains_n_b_l_t = []
-            for layer in self.parsed_model.layers:
-                if not is_spiking(layer, self.config):
+            for layer in ir.layers:
+                if not ir_connectivity.is_spiking(layer):
                     continue
-                shape = list(tuple(layer.output.shape)) \
-                    + [self._num_timesteps]
-                self.spiketrains_n_b_l_t.append((np.zeros(shape, 'float32'),
-                                                 layer.name))
+                shape = list(layer.output_shape) + [self._num_timesteps]
+                self.spiketrains_n_b_l_t.append(
+                    (np.zeros(shape, 'float32'), layer.name))
 
         if self.config.get('conversion', 'spike_code') == 'temporal_pattern':
             self.spikerates_n_b_l = []
-            for layer in self.parsed_model.layers:
-                if not is_spiking(layer, self.config):
+            for layer in ir.layers:
+                if not ir_connectivity.is_spiking(layer):
                     continue
                 self.spikerates_n_b_l.append(
-                    (np.zeros(tuple(layer.output.shape), 'float32'),
-                     layer.name))
+                    (np.zeros(layer.output_shape, 'float32'), layer.name))
 
         if 'operations' in self._plot_keys or \
                 'synaptic_operations_b_t' in self._log_keys:
@@ -882,13 +888,12 @@ class AbstractSNN:
 
         if 'mem_n_b_l_t' in self._log_keys or 'v_mem' in self._plot_keys:
             self.mem_n_b_l_t = []
-            for layer in self.parsed_model.layers:
-                if not is_spiking(layer, self.config):
+            for layer in ir.layers:
+                if not ir_connectivity.is_spiking(layer):
                     continue
-                shape = list(tuple(layer.output.shape)) \
-                    + [self._num_timesteps]
-                self.mem_n_b_l_t.append((np.zeros(shape, 'float32'),
-                                         layer.name))
+                shape = list(layer.output_shape) + [self._num_timesteps]
+                self.mem_n_b_l_t.append(
+                    (np.zeros(shape, 'float32'), layer.name))
 
         self.top1err_b_t = np.empty((self.batch_size, self._num_timesteps),
                                     bool)
@@ -925,36 +930,29 @@ class AbstractSNN:
         Set connectivity statistics needed to compute the number of operations
         in the network. This includes e.g. the members `fanin`, `fanout`,
         `num_neurons`, `num_neurons_with_bias`.
+
+        All math is delegated to the framework-agnostic library in
+        ``snntoolbox.core.connectivity``; this method just unpacks the
+        result onto ``self`` for legacy attribute access.
         """
 
-        self.fanin = [0]
-        self.fanout = [get_fanout(self.parsed_model.layers[0], self.config)]
-        self.num_neurons = [
-            np.prod(tuple(self.parsed_model.input.shape)[1:])]
-        self.num_neurons_with_bias = [0]
+        def _log_bias(layer):
+            if layer.weights is None or layer.weights.bias is None:
+                return False
+            has_bias = bool(np.any(layer.weights.bias))
+            if has_bias:
+                print("Detected layer with biases: {}".format(layer.name))
+            return has_bias
 
-        for layer in self.parsed_model.layers:
-            if is_spiking(layer, self.config):
-                self.fanin.append(get_fanin(layer))
-                self.fanout.append(get_fanout(layer, self.config))
-                self.num_neurons.append(
-                    np.prod(tuple(layer.output.shape)[1:]))
-                if hasattr(layer, 'bias') and layer.bias is not None and \
-                        any(keras.backend.get_value(layer.bias)):
-                    print("Detected layer with biases: {}".format(layer.name))
-                    self.num_neurons_with_bias.append(self.num_neurons[-1])
-                else:
-                    self.num_neurons_with_bias.append(0)
+        stats = ir_connectivity.compute_connectivity(
+            self.ir_model, bias_predicate=_log_bias,
+        )
 
-        self.num_synapses = 0
-        for i in range(len(self.fanout)):
-            if np.isscalar(self.fanout[i]):
-                self.num_synapses += self.num_neurons[i] * self.fanout[i]
-            else:
-                # For convolution layers with stride > 1, fanout varies
-                # between neurons in a layer.
-                self.num_synapses += np.sum(self.fanout[i])
-        self.num_synapses = int(self.num_synapses)
+        self.fanin = stats.fanin
+        self.fanout = stats.fanout
+        self.num_neurons = stats.num_neurons
+        self.num_neurons_with_bias = stats.num_neurons_with_bias
+        self.num_synapses = stats.num_synapses
 
         return self.num_neurons, self.num_neurons_with_bias, self.fanin
 

@@ -19,6 +19,8 @@ Public API
     adapters.layer_list_to_ir
     adapters.IRModelFacade
     adapters.IRLayerFacade
+    connectivity.compute_connectivity
+    connectivity.ConnectivityStats
 """
 
 from snntoolbox.core.ir import (

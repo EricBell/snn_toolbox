@@ -41,7 +41,7 @@ from snntoolbox.core.ir import (
 
 def keras_model_to_ir(
     parsed_model: Any,
-    data_format: str = 'channels_last',
+    data_format: Optional[str] = None,
 ) -> IRModel:
     """Convert a parsed Keras model to the framework-agnostic IR.
 
@@ -96,8 +96,9 @@ def keras_model_to_ir(
             kwargs['dilation_rate'] = tuple(layer.dilation_rate)
         if hasattr(layer, 'pool_size') and layer.pool_size is not None:
             kwargs['pool_size'] = tuple(layer.pool_size)
-        if hasattr(layer, 'data_format') and layer.data_format is not None:
-            kwargs['data_format'] = DataFormat(layer.data_format)
+        fmt = getattr(layer, 'data_format', None)
+        if fmt in ('channels_first', 'channels_last'):
+            kwargs['data_format'] = DataFormat(fmt)
         if hasattr(layer, 'axis') and layer_type == LayerType.CONCATENATE:
             kwargs['axis'] = layer.axis
 
@@ -113,7 +114,13 @@ def keras_model_to_ir(
         try:
             nodes = layer._inbound_nodes
             if nodes:
-                inbound_layers = nodes[0].inbound_layers
+                node = nodes[0]
+                # Keras 2 had ``inbound_layers``; Keras 3 replaced it with
+                # ``parent_nodes`` whose ``operation`` is the source layer.
+                inbound_layers = getattr(node, 'inbound_layers', None)
+                if inbound_layers is None:
+                    parent_nodes = getattr(node, 'parent_nodes', ())
+                    inbound_layers = [pn.operation for pn in parent_nodes]
                 if not isinstance(inbound_layers, (list, tuple)):
                     inbound_layers = [inbound_layers]
                 inbound = tuple(inb.name for inb in inbound_layers)
@@ -121,10 +128,8 @@ def keras_model_to_ir(
             pass
 
         # --- shapes ---
-        output_shape = _safe_shape(layer.output_shape)
-        input_shape = _safe_shape(
-            layer.input_shape if hasattr(layer, 'input_shape') else None
-        )
+        output_shape = _keras_output_shape(layer)
+        input_shape = _keras_input_shape(layer)
 
         ir_layer = IRLayer(
             name=layer.name,
@@ -137,11 +142,30 @@ def keras_model_to_ir(
         )
         ir_layers.append(ir_layer)
 
-    # Determine model input shape (without batch dim)
-    raw = parsed_model.layers[0].input_shape
+    # Determine model input shape (without batch dim).  Keras 3 replaced
+    # ``InputLayer.input_shape`` with ``batch_shape``.
+    input_layer = parsed_model.layers[0]
+    raw = getattr(input_layer, 'batch_shape', None)
+    if raw is None:
+        raw = getattr(input_layer, 'input_shape', None)
+    if raw is None and hasattr(input_layer, 'output'):
+        raw = tuple(input_layer.output.shape)
     if isinstance(raw, list):
         raw = raw[0]
     model_input_shape = tuple(int(x) for x in raw[1:])
+
+    # Resolve the data format: prefer an explicit argument, otherwise pick
+    # the first spatial layer's data_format, otherwise fall back to Keras's
+    # global default.
+    if data_format is None:
+        data_format = next(
+            (
+                layer.data_format.value
+                for layer in ir_layers
+                if layer.data_format is not None
+            ),
+            'channels_last',
+        )
 
     return IRModel(
         layers=ir_layers,
@@ -416,6 +440,28 @@ def _to_tuple(value: Any) -> Optional[tuple]:
     if isinstance(value, list):
         return tuple(value)
     return (value,)
+
+
+def _keras_output_shape(layer: Any) -> tuple:
+    """Keras-3-compatible fetch of a layer's output shape."""
+    out = getattr(layer, 'output', None)
+    if out is not None and hasattr(out, 'shape'):
+        return _safe_shape(tuple(out.shape))
+    return _safe_shape(getattr(layer, 'output_shape', None))
+
+
+def _keras_input_shape(layer: Any) -> tuple:
+    """Keras-3-compatible fetch of a layer's input shape (or ``()``)."""
+    inp = getattr(layer, 'input', None)
+    if inp is not None and hasattr(inp, 'shape'):
+        return _safe_shape(tuple(inp.shape))
+    legacy = getattr(layer, 'input_shape', None)
+    if legacy is not None:
+        return _safe_shape(legacy)
+    batch_shape = getattr(layer, 'batch_shape', None)
+    if batch_shape is not None:
+        return _safe_shape(batch_shape)
+    return ()
 
 
 def _safe_shape(shape: Any) -> tuple:
