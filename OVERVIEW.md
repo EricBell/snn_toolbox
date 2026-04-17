@@ -34,6 +34,7 @@ snntoolbox/
 │   ├── ir.py               # IRModel / IRLayer dataclasses (the intermediate representation)
 │   ├── protocols.py        # ModelParserBase ABC, SNNBackendBase ABC, TelemetryHook protocol
 │   ├── adapters.py         # Keras↔IR bridges: keras_model_to_ir(), IRLayerFacade, IRModelFacade
+│   ├── connectivity.py     # Pure-numpy fan-in/fan-out/num_neurons/synapse stats (no ML imports)
 │   ├── registry.py         # PluginRegistry for parsers and backends
 │   └── spiking_params.py   # Pure-numpy weight normalization, BN absorption, scale factors
 ├── parsing/
@@ -96,8 +97,21 @@ Singletons: `parser_registry` and `backend_registry`.
 
 ### Backward-Compatibility Adapters (`core/adapters.py`)
 
-- `keras_model_to_ir(keras_model)` — converts an existing Keras `Model` to `IRModel` without touching parser code.
+- `keras_model_to_ir(keras_model, data_format=None)` — converts an existing Keras `Model` to `IRModel` without touching parser code. `data_format` is auto-detected from spatial layers if not supplied. Keras 3 compatible (uses `parent_nodes` graph traversal and tensor `.shape` for output/input shape extraction).
 - `IRLayerFacade` / `IRModelFacade` — wrap `IRLayer` / `IRModel` to expose the Keras-layer API (`get_weights()`, `.output_shape`, `.kernel_size`, …) so that legacy `AbstractSNN` backends work transparently with the new IR.
+
+### Pure-Python Connectivity Library (`core/connectivity.py`)
+
+All spiking neuron parameter calculations live here — no ML framework import:
+
+- `is_spiking(layer)`, `is_conv(layer)`, `is_pool(layer)`, `has_stride_unity(layer)` — layer predicates
+- `num_neurons(layer, model)` — product of spatial output dims
+- `get_fanin(layer, model)` — kernel × channels for conv; in-features for dense
+- `get_fanout(layer, model)` — scalar or per-neuron ndarray for stride > 1 convs
+- `compute_connectivity(model)` → `ConnectivityStats` — aggregate neuron/synapse counts for a whole model
+- `compute_ann_ops(...)` — multiply-add count for a forward pass
+
+`AbstractSNN.set_connectivity()` in `simulation/utils.py` now delegates entirely to `compute_connectivity()` rather than calling Keras layer attributes directly. `init_log_vars()` likewise iterates over `ir.layers` using `ir_connectivity.is_spiking()`. Tests in `tests/core/test_connectivity.py` run without TensorFlow.
 
 ## Integrations
 
@@ -146,6 +160,7 @@ No environment variables are used; all paths are file-based.
 | `snntoolbox/core/ir.py` | `IRModel` / `IRLayer` data structures |
 | `snntoolbox/core/protocols.py` | `ModelParserBase` and `SNNBackendBase` ABCs |
 | `snntoolbox/core/adapters.py` | Parser↔backend bridge |
+| `snntoolbox/core/connectivity.py` | Framework-agnostic fan-in/fan-out/synapse calculations |
 | `snntoolbox/core/registry.py` | Plugin discovery |
 | `snntoolbox/config_defaults` | All config keys and their defaults |
 | `snntoolbox/parsing/model_libs/keras_input_lib.py` | Reference parser implementation |
