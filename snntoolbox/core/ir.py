@@ -190,6 +190,12 @@ class IRLayer:
         """Legacy string name (e.g. ``'Conv2D'``, ``'Dense'``)."""
         return LAYER_TYPE_TO_STRING.get(self.layer_type, self.layer_type.name)
 
+    def get_weights(self) -> tuple:
+        """Return weights as a tuple, compatible with legacy helper functions."""
+        if self.weights is None:
+            return ()
+        return self.weights.as_tuple()
+
 
 @dataclass
 class IRModel:
