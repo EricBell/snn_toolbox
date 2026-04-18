@@ -80,6 +80,8 @@ docs/                       # Sphinx documentation source
 
 `LayerType` is an enum; `LAYER_TYPE_FROM_STRING` maps legacy Keras string names to it.
 
+`IRLayer.get_weights()` returns `(kernel, bias)` as a plain tuple for compatibility with legacy helpers that call `layer.get_weights()`.
+
 ### Protocol / ABC Layer (`core/protocols.py`)
 
 - `ModelParserBase` (ABC) — template method `parse()` orchestrates `get_layer_iterable()` → per-layer `parse_dense/parse_convolution/…` → `layer_list_to_ir()`. Subclasses implement the framework-specific `get_*` / `parse_*` methods.
@@ -120,7 +122,7 @@ All spiking neuron parameter calculations live here — no ML framework import:
 | TensorFlow / Keras | Primary parser and INI backends | `parsing/model_libs/keras_input_lib.py`, `simulation/backends/inisim/` |
 | PyTorch | Model source (converted via ONNX → Keras) | `parsing/model_libs/pytorch_input_lib.py` |
 | ONNX + onnxruntime | PyTorch → Keras bridge | `parsing/model_libs/pytorch_input_lib.py` |
-| Brian2 | SNN simulation backend | `simulation/target_simulators/brian2_target_sim.py` |
+| Brian2 | SNN simulation backend — `SNN` now extends `SNNBackendBase` and consumes `IRLayer` objects natively; uses `self.logger` instead of `print`; TF import is lazy (only in `load()`) | `simulation/target_simulators/brian2_target_sim.py` |
 | PyNN | Abstraction over nest/brian/neuron/SpiNNaker | `simulation/target_simulators/pyNN_target_sim.py` |
 | Intel Loihi (nxsdk) | Neuromorphic hardware deployment | `simulation/target_simulators/loihi_target_sim.py` |
 | SpiNNaker | Neuromorphic hardware deployment | `simulation/target_simulators/spiNNaker_target_sim.py` |
@@ -171,6 +173,7 @@ No environment variables are used; all paths are file-based.
 - **PyTorch parser goes through ONNX then Keras**: `pytorch_input_lib.py` imports `tensorflow.keras` and converts the PyTorch model to ONNX, then loads it into a Keras model. TensorFlow is therefore a *runtime* dependency of the PyTorch parser — not just an optional extra.
 - **`bin/utils.py` still hard-codes a Keras import**: `from snntoolbox.parsing.model_libs.keras_input_lib import load` is at module level. The new `PluginRegistry` in `core/registry.py` is not yet wired into `run_pipeline()`; both paths coexist during the ongoing migration.
 - **`core/` is a recent addition**: The IR, protocols, adapters, and registry were introduced in the refactoring commits to decouple parsers from backends. Legacy `AbstractSNN` and legacy parsers still exist in parallel; `IRLayerFacade` / `IRModelFacade` bridge keeps them working.
+- **Brian2 backend is the first fully-migrated backend**: `brian2_target_sim.SNN` now extends `SNNBackendBase` and takes `IRLayer` directly in `build_dense/convolution/pooling`. The `load()` path converts saved Keras layers to `IRLayer` via the private `_keras_layer_to_ir()` static method — `tensorflow.keras` is only imported inside `load()`, not at module level.
 - **Loihi requires proprietary nxsdk**: Intel's `nxsdk` and `nxsdk_modules_ncl` are not on PyPI. The `loihi` optional-dependency group in `pyproject.toml` is intentionally empty.
 - **`config_defaults` is a file, not a directory**: Despite the name, it is a single INI file force-included in the wheel via `hatch.build.targets.wheel.force-include`.
 - **Batch size auto-reduced to 1** for non-parallelizable backends: `SNNBackendBase._adjust_batchsize()` checks `is_parallelizable` and silently overrides the config value.
